@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Voice Roleplay Demo</title>
+</head>
+
+<body>
+    <h1>Voice Roleplay Demo</h1>
+    <button id="start">Start Recording</button>
+    <button id="stop" disabled>Stop</button>
+    <div id="log"></div>
+    <script>
+        let ws;
+        let mediaRecorder;
+        let chunks = [];
+
+        document.getElementById('start').onclick = async () => {
+            ws = new WebSocket('ws://localhost:8000/ws');
+
+            ws.onopen = () => console.log("WebSocket connected");
+            ws.onclose = () => console.log("WebSocket closed");
+            ws.onerror = (e) => console.error("WebSocket error:", e);
+
+            ws.onmessage = evt => {
+                const data = JSON.parse(evt.data);
+                if (data.type === "assistant") {
+                    const audio = new Audio('data:audio/mp3;base64,' + data.audio);
+                    audio.play();
+                    const div = document.createElement("div");
+                    div.textContent = "AI: " + data.text;
+                    document.getElementById("log").appendChild(div);
+                }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = async e => {
+                const base64data = await arrayBufferToBase64(e.data);
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "audio_chunk", payload: base64data }));
+                }
+            };
+
+            mediaRecorder.start(1000); // record in 1s chunks
+            document.getElementById('start').disabled = true;
+            document.getElementById('stop').disabled = false;
+        };
+
+        document.getElementById('stop').onclick = () => {
+            mediaRecorder.stop();
+            ws.close();
+            document.getElementById('start').disabled = false;
+            document.getElementById('stop').disabled = true;
+        };
+
+        function arrayBufferToBase64(blob) {
+            return new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const b64 = reader.result.split(',')[1];
+                    resolve(b64);
+                };
+                reader.readAsDataURL(blob);
+            });
+        }
+    </script>
+
+</body>
+
+</html>
